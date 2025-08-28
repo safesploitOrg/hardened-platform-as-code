@@ -1,0 +1,106 @@
+name: Terraform Provision (EC2 S3 VPC)
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  TF_ROOT: project1_refactor
+  TF_VERSION: 1.13.0
+  AWS_REGION: eu-west-2
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  terraform-provision:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write   # Required for OIDC
+      contents: read    # To checkout repo
+
+    steps:
+      - name: 📥 Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🔐 Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🧪 Verify Remote State S3 Backend
+        run: |
+          aws s3api head-bucket \
+            --bucket my-eu-tf-state-bucket
+
+      - name: 🧪 Verify DynamoDB Lock Table
+        run: |
+          aws dynamodb describe-table \
+            --table-name terraform-locks
+
+      - name: 🛠️ Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # Pre-merge checks: 
+      # (uncomment to enable formatting check)
+      # - name: 🧼 Terraform Format
+      #   run: |
+      #     terraform -chdir=${{ env.TF_ROOT }} \
+      #       fmt -check -recursive
+
+      - name: 📄 Terraform Init
+        run: |
+          terraform -chdir=${{ env.TF_ROOT }} \
+            init \
+            -input=false \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: 🔎 Terraform Validate
+        run: |
+          terraform -chdir=${{ env.TF_ROOT }} \
+            validate
+
+      # Optional: Security linting with tfsec (uncomment to enable)
+      # - name: 🔐 tfsec (Terraform security scan)
+      #   uses: aquasecurity/tfsec-pr-commenter-action@v1.4.0
+      #   with:
+      #     working_directory: ${{ env.TF_ROOT }}
+      #     github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 Terraform Plan
+        run: |
+          terraform -chdir=${{ env.TF_ROOT }} \
+            plan \
+            -out=tfplan
+
+      # Post-merge checks
+      # Manually triggered for main branch (workflow_dispatch)
+      - name: 🚀 Terraform Apply
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          terraform -chdir=${{ env.TF_ROOT }} \
+            apply \
+            -auto-approve \
+            tfplan
+
+      # Auto apply on main branch
+      # - name: 🚀 Terraform Apply
+      #   if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      #   run: |
+      #     terraform -chdir=${{ env.TF_ROOT }} \
+      #       apply -auto-approve tfplan
+
+    # Output Terraform outputs
+      - name: 📤 Terraform Output
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          terraform -chdir=${{ env.TF_ROOT }} \
+            output -json

@@ -1,0 +1,69 @@
+name: Terraform Destroy (Manually Triggered)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'DESTROY' to confirm you really want to destroy infrastructure"
+        required: true
+
+env:
+  TF_ROOT: project1_refactor
+  TF_VERSION: 1.13.0
+  AWS_REGION: eu-west-2
+
+concurrency:
+  group: terraform-destroy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write   # Required for OIDC
+      contents: read    # To checkout repo
+
+    steps:
+      - name: ⛔ Validate destroy confirmation
+        if: ${{ github.event.inputs.confirm != 'DESTROY' }}
+        run: |
+          echo "❌ Destroy not confirmed. Type 'DESTROY' in the workflow input."
+          exit 1
+
+      - name: 📥 Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🔐 Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🧪 Verify Remote State S3 Backend
+        run: |
+          aws s3api head-bucket \
+            --bucket my-eu-tf-state-bucket
+
+      - name: 🧪 Verify DynamoDB Lock Table
+        run: |
+          aws dynamodb describe-table \
+            --table-name terraform-locks
+
+      - name: 🛠️ Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: 📄 Terraform Init
+        run: |
+          terraform -chdir=${{ env.TF_ROOT }} \
+            init \
+            -input=false \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: 💣 Terraform Destroy
+        run: |
+          terraform -chdir=${{ env.TF_ROOT }} \
+            destroy \
+            -auto-approve

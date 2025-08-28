@@ -1,0 +1,28 @@
+# .gitignore
+####################################
+###### COMMENT OUT FOR PROD ########
+####################################
+# terraform.tfvars
+# *.tfstate
+# *.tfstate.backup
+# .terraform/
+# .terraform.lock.hcl
+
+# Sensitive keys
+# *.pem
+# *.key
+# *.crt
+
+# Local overrides (never commit env-specific tweaks)
+# override.tf
+# override.tf.json
+# *_override.tf
+# *_override.tf.json
+
+# Ignore backend config with real values
+# backend.tf
+
+# OS Metadata
+*.DS_STORE
+Thumbs.db
+desktop.ini
