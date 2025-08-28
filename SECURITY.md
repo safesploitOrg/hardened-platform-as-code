@@ -1,0 +1,1 @@
+Note: This repo is a portfolio project. All sensitive values (state buckets, lock tables, CIDRs) are redacted or replaced with safe defaults.
